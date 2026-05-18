@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Stock Strategy Analyzer</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  :root{
+    --bg:#0a0a0a;--surface:#111;--surface2:#161616;
+    --border:#1e1e1e;--border2:#2a2a2a;
+    --text:#e0e0e0;--text2:#bbb;--text3:#888;--text4:#666;--text5:#555;
+    --mono:'DM Mono',monospace;--sans:'DM Sans',sans-serif;
+    --blue:#5a8fa8;--green:#6a8f5a;--amber:#a89a5a;--red:#a86a5a;
+    --purple:#7a6aa8;--teal:#5a9a8a;--orange:#a8785a;
+    --gold:#c8922a;--green-bg:#0f1a0c;--red-bg:#1a0f0c;
+  }
+  html,body{background:var(--bg);color:var(--text);font-family:var(--sans);min-height:100vh;}
+  .widget{max-width:960px;margin:0 auto;padding:2rem 1.5rem;}
+  .app-title{font-size:22px;font-weight:500;color:var(--text);margin-bottom:4px;letter-spacing:-0.02em;}
+  .app-sub{font-size:14px;color:var(--text4);margin-bottom:1.5rem;}
+
+  /* input panel */
+  .panel{background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:1.25rem 1.5rem;margin-bottom:1rem;}
+  .panel-label{font-size:11px;color:var(--text4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:14px;}
+  .input-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px;}
+  .input-group{display:flex;flex-direction:column;gap:5px;}
+  .input-label{font-size:14px;color:var(--text3);}
+  .input-hint{font-size:11px;color:var(--text5);}
+  .capital-wrap{position:relative;display:flex;align-items:center;}
+  .capital-prefix{position:absolute;left:12px;font-size:15px;color:var(--gold);font-family:var(--mono);pointer-events:none;}
+  .capital-input{background:var(--bg);border:0.5px solid var(--border2);border-radius:8px;height:42px;padding:0 12px 0 24px;color:var(--gold);font-size:15px;font-family:var(--mono);width:100%;outline:none;}
+  .capital-hint{font-size:11px;color:#c8922a66;margin-top:2px;}
+  .input-field{background:var(--bg);border:0.5px solid var(--border2);border-radius:8px;height:42px;padding:0 12px;color:var(--text);font-size:15px;font-family:var(--sans);width:100%;outline:none;}
+  .slider-section{border-top:0.5px solid #1a1a1a;padding-top:16px;}
+  .slider-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;}
+  .slider-label{font-size:14px;color:var(--text3);}
+  .slider-val{font-size:15px;font-weight:500;color:var(--text);font-family:var(--mono);}
+  input[type=range]{width:100%;accent-color:#888;height:4px;cursor:pointer;}
+  .slider-bounds{display:flex;justify-content:space-between;font-size:11px;color:var(--text5);margin-top:6px;}
+
+  /* run button */
+  .run-btn{width:100%;height:46px;background:#d8d8d8;border:none;border-radius:8px;color:#111;font-size:16px;font-weight:500;font-family:var(--sans);cursor:pointer;margin-bottom:1.25rem;transition:background .15s,transform .1s;}
+  .run-btn:hover{background:#ebebeb;}
+  .run-btn:active{transform:scale(0.99);}
+  .run-btn:disabled{background:#333;color:#666;cursor:not-allowed;}
+
+  .error-msg{background:#1a0f0c;border:0.5px solid #a86a5a44;border-radius:8px;padding:12px 16px;color:#a86a5a;font-size:13px;margin-bottom:1rem;display:none;}
+  .loading{text-align:center;padding:2rem;color:var(--text4);font-size:14px;display:none;}
+
+  /* chart card */
+  .chart-card{background:#0d0d0d;border:0.5px solid #1a1a1a;border-radius:12px;padding:1.25rem;margin-bottom:1rem;}
+  .chart-title{font-size:14px;font-weight:500;color:var(--text);}
+  .chart-sub{font-size:12px;color:var(--text4);margin-top:3px;margin-bottom:1rem;}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:1rem;}
+  .legend-item{display:flex;align-items:center;gap:7px;cursor:pointer;}
+  .legend-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;transition:transform .15s;}
+  .legend-item:hover .legend-dot{transform:scale(1.4);}
+  .legend-label{font-size:12px;color:var(--text4);transition:color .15s;}
+  .legend-item:hover .legend-label{color:var(--text2);}
+  .chart-wrap{position:relative;}
+  .y-labels{position:absolute;left:0;top:0;bottom:24px;display:flex;flex-direction:column;justify-content:space-between;padding:4px 0;}
+  .y-label{font-size:11px;color:var(--text5);font-family:var(--mono);}
+  .chart-inner{margin-left:48px;position:relative;}
+  .x-labels{display:flex;justify-content:space-between;margin-top:6px;margin-left:48px;}
+  .x-label{font-size:11px;color:var(--text5);font-family:var(--mono);}
+  .tooltip{position:absolute;background:#1c1c1c;border:0.5px solid #333;border-radius:8px;padding:10px 14px;pointer-events:none;display:none;white-space:nowrap;z-index:10;}
+  .tt-date{font-size:11px;color:var(--text4);margin-bottom:4px;font-family:var(--mono);}
+  .tt-val{font-size:18px;font-weight:500;font-family:var(--mono);}
+  .tt-delta{font-size:12px;margin-top:3px;font-family:var(--mono);}
+  .divider{border:none;border-top:0.5px solid #1c1c1c;margin:1.25rem 0;}
+
+  /* cards */
+  .cards-label{font-size:12px;color:var(--text4);margin-bottom:10px;}
+  .cards-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+  .card{background:var(--surface);border-radius:10px;border:0.5px solid var(--border);cursor:pointer;overflow:hidden;transition:transform .2s ease,border-color .2s,background .2s,box-shadow .2s,opacity .3s;}
+  .card:hover{transform:translateY(-5px);border-color:#3a3a3a;background:var(--surface2);box-shadow:0 8px 28px rgba(0,0,0,0.7);}
+  .card.selected{border-color:#555;background:#181818;box-shadow:0 0 0 1px #444;}
+  .card-accent{height:5px;transition:height .2s;}
+  .card:hover .card-accent,.card.selected .card-accent{height:7px;}
+  .card-body{padding:8px 10px 10px;}
+  .card-rank{font-size:10px;color:var(--text4);font-family:var(--mono);margin-bottom:2px;}
+  .card-name{font-size:11px;color:var(--text2);margin-bottom:6px;line-height:1.3;}
+  .card-start{font-size:10px;color:var(--text3);font-family:var(--mono);}
+  .card-end{font-size:13px;font-weight:500;color:var(--text);font-family:var(--mono);margin:2px 0 5px;}
+  .card-delta{font-size:10px;font-weight:500;font-family:var(--mono);padding:2px 6px;border-radius:4px;display:inline-block;}
+  .pos{color:#6a8f5a;background:var(--green-bg);}
+  .neg{color:#a86a5a;background:var(--red-bg);}
+  .best-badge{font-size:8px;color:#6a8f5a;background:var(--green-bg);padding:2px 5px;border-radius:3px;float:right;}
+  .short-warning{font-size:9px;color:#a89a5a;margin-top:4px;}
+
+  /* detail panel */
+  .detail-panel{background:#0d0d0d;border:0.5px solid #1a1a1a;border-radius:12px;padding:1.25rem;margin-top:1rem;display:none;opacity:0;transform:translateY(10px);transition:opacity .3s,transform .3s;}
+  .detail-panel.visible{opacity:1;transform:translateY(0);}
+  .detail-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;}
+  .detail-title{font-size:14px;font-weight:500;color:var(--text);}
+  .close-btn{width:26px;height:26px;background:#1a1a1a;border:0.5px solid var(--border2);border-radius:50%;color:var(--text3);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;}
+  .close-btn:hover{background:#2a2a2a;color:var(--text);}
+  .detail-metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;}
+  .metric{background:var(--surface);border-radius:8px;padding:10px 12px;}
+  .metric-label{font-size:12px;color:var(--text3);margin-bottom:4px;}
+  .metric-val{font-size:16px;font-weight:500;color:var(--text2);font-family:var(--mono);}
+  .metric-val.green{color:#6a8f5a;}
+  .metric-val.red{color:#a86a5a;}
+  .metric-val.gold{color:var(--gold);}
+  .metric-val.amber{color:#a89a5a;}
+
+  /* ML recommendation tab */
+  .ml-card{background:#0d0d0d;border:0.5px solid #1a1a1a;border-radius:12px;padding:1.25rem;margin-top:1rem;}
+  .ml-header{display:flex;align-items:center;gap:10px;margin-bottom:1.25rem;}
+  .ml-icon{width:32px;height:32px;background:#1a1a2a;border:0.5px solid #2a2a4a;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+  .ml-title{font-size:14px;font-weight:500;color:var(--text);}
+  .ml-sub{font-size:11px;color:var(--text4);margin-top:2px;}
+  .ml-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1rem;}
+  .ml-recommendation{background:var(--surface);border-radius:10px;padding:1rem;border:0.5px solid #2a2a4a;}
+  .ml-rec-label{font-size:11px;color:var(--text4);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;}
+  .ml-rec-strategy{font-size:18px;font-weight:500;color:var(--text);margin-bottom:4px;}
+  .ml-rec-confidence{font-size:13px;font-family:var(--mono);}
+  .ml-models{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px;}
+  .ml-model-card{background:#0a0a0a;border-radius:8px;padding:8px 10px;border:0.5px solid var(--border);}
+  .ml-model-label{font-size:10px;color:var(--text5);margin-bottom:3px;}
+  .ml-model-val{font-size:12px;color:var(--text2);font-family:var(--mono);}
+  .ml-conditions{background:var(--surface);border-radius:10px;padding:1rem;border:0.5px solid var(--border);}
+  .ml-conditions-label{font-size:11px;color:var(--text4);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em;}
+  .ml-condition-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;}
+  .ml-condition-name{font-size:12px;color:var(--text3);}
+  .ml-condition-val{font-size:12px;font-family:var(--mono);color:var(--text2);}
+  .ml-regime{background:var(--surface);border-radius:10px;padding:1rem;border:0.5px solid var(--border);margin-bottom:1rem;}
+  .ml-regime-label{font-size:11px;color:var(--text4);margin-bottom:6px;text-transform:uppercase;letter-spacing:.06em;}
+  .ml-regime-val{font-size:13px;color:var(--text2);}
+  .bubble-bar-wrap{margin-top:8px;}
+  .bubble-bar-label{display:flex;justify-content:space-between;font-size:11px;color:var(--text4);margin-bottom:4px;}
+  .bubble-bar-track{height:6px;background:#1a1a1a;border-radius:3px;overflow:hidden;}
+  .bubble-bar-fill{height:100%;border-radius:3px;transition:width .5s;}
+  .ml-features{background:var(--surface);border-radius:10px;padding:1rem;border:0.5px solid var(--border);}
+  .ml-features-label{font-size:11px;color:var(--text4);margin-bottom:10px;text-transform:uppercase;letter-spacing:.06em;}
+  .feature-row{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+  .feature-name{font-size:11px;color:var(--text3);width:120px;flex-shrink:0;}
+  .feature-bar-track{flex:1;height:4px;background:#1a1a1a;border-radius:2px;overflow:hidden;}
+  .feature-bar-fill{height:100%;background:#5a8fa8;border-radius:2px;}
+  .feature-pct{font-size:11px;color:var(--text4);font-family:var(--mono);width:36px;text-align:right;}
+  .ml-disclaimer{font-size:11px;color:var(--text5);margin-top:1rem;padding:8px 12px;background:#111;border-radius:6px;border:0.5px solid var(--border);}
+
+  .footer{text-align:center;font-size:11px;color:var(--text5);margin-top:1.5rem;padding-bottom:1rem;}
+
+  @media(max-width:700px){
+    .input-row{grid-template-columns:1fr 1fr;}
+    .cards-grid{grid-template-columns:repeat(4,1fr);}
+    .detail-metrics{grid-template-columns:repeat(2,1fr);}
+    .ml-grid{grid-template-columns:1fr;}
+  }
+
+  /* ── StockBot sidebar ── */
+  .stockbot-sidebar{position:fixed;right:0;top:0;height:100vh;width:360px;background:#111;border-left:0.5px solid #1e1e1e;display:flex;flex-direction:column;z-index:1000;box-shadow:-4px 0 20px rgba(0,0,0,0.5);}
+  .stockbot-header{padding:16px;border-bottom:0.5px solid #1e1e1e;display:flex;align-items:center;gap:10px;}
+  .stockbot-icon{width:32px;height:32px;background:#1a1a2a;border:0.5px solid #2a2a4a;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;}
+  .stockbot-title{font-size:14px;font-weight:500;color:#e0e0e0;}
+  .stockbot-sub{font-size:11px;color:#666;margin-top:2px;}
+  .stockbot-messages{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px;}
+  .stockbot-msg{max-width:95%;padding:12px 14px;border-radius:10px;font-size:14px;line-height:1.6;}
+  .stockbot-msg.bot{background:#1a1a1a;color:#bbb;border:0.5px solid #2a2a2a;align-self:flex-start;}
+  .stockbot-msg.user{background:#1a2a3a;color:#e0e0e0;align-self:flex-end;}
+  .stockbot-msg.thinking{color:#555;font-style:italic;}
+  .stockbot-input-wrap{padding:12px;border-top:0.5px solid #1e1e1e;display:flex;gap:8px;}
+  .stockbot-input{flex:1;background:#0a0a0a;border:0.5px solid #2a2a2a;border-radius:8px;padding:8px 12px;color:#e0e0e0;font-size:13px;font-family:'DM Sans',sans-serif;outline:none;height:38px;}
+  .stockbot-input:focus{border-color:#5a8fa8;}
+  .stockbot-send{background:#5a8fa8;border:none;border-radius:8px;width:38px;height:38px;color:#fff;font-size:16px;cursor:pointer;flex-shrink:0;transition:background .15s;}
+  .stockbot-send:hover{background:#4a7f98;}
+  .stockbot-send:disabled{background:#2a2a2a;color:#555;cursor:not-allowed;}
+  .widget{margin-right:360px;padding-right:1rem;}
+</style>
+</head>
+<body>
+<!-- StockBot Sidebar -->
+<div class="stockbot-sidebar">
+  <div class="stockbot-header">
+    <div class="stockbot-icon">&#x1F916;</div>
+    <div>
+      <div class="stockbot-title">StockBot</div>
+      <div class="stockbot-sub">Ask about your analysis</div>
+    </div>
+  </div>
+  <div class="stockbot-messages" id="stockbotMessages">
+    <div class="stockbot-msg bot">Hi! Run an analysis and I'll help explain your results. Ask me anything about the strategies, ML recommendation, or market conditions.</div>
+  </div>
+  <div class="stockbot-input-wrap">
+    <input class="stockbot-input" id="stockbotInput" type="text" placeholder="Ask StockBot..."/>
+    <button class="stockbot-send" id="stockbotSend">&#x27A4;</button>
+  </div>
+</div>
+
+<div class="widget">
+  <div class="app-title">Stock Strategy Analyzer</div>
+  <div class="app-sub">Compare seven trading strategies with AI-powered recommendations</div>
+
+  <div class="panel">
+    <div class="panel-label">Backtest Settings</div>
+    <div class="input-row">
+      <div class="input-group">
+        <div class="input-label">Ticker symbol</div>
+        <input class="input-field" id="tickerInput" type="text" value="AAPL" oninput="this.value=this.value.toUpperCase()" placeholder="e.g. AAPL"/>
+      </div>
+      <div class="input-group">
+        <div class="input-label">Starting capital <span style="color:var(--gold);font-size:11px;">USD</span></div>
+        <div class="capital-wrap">
+          <span class="capital-prefix">$</span>
+          <input class="capital-input" id="capitalInput" type="number" value="10000" min="100"/>
+        </div>
+        <div class="capital-hint">NYSE · USD</div>
+      </div>
+      <div class="input-group">
+        <div class="input-label">Start date</div>
+        <div class="input-hint">format: YYYY-MM-DD</div>
+        <input class="input-field" id="startInput" type="text" value="2020-01-01" placeholder="YYYY-MM-DD"/>
+      </div>
+      <div class="input-group">
+        <div class="input-label">End date</div>
+        <div class="input-hint">format: YYYY-MM-DD</div>
+        <input class="input-field" id="endInput" type="text" value="2026-04-24" placeholder="YYYY-MM-DD"/>
+      </div>
+    </div>
+    <div class="slider-section">
+      <div class="slider-header">
+        <div class="slider-label">Trailing stop loss</div>
+        <div class="slider-val" id="sliderVal">5%</div>
+      </div>
+      <input type="range" min="1" max="20" value="5" step="1" id="stopSlider" oninput="document.getElementById('sliderVal').textContent=this.value+'%'"/>
+      <div class="slider-bounds"><span>1% — tight, sells quickly</span><span>20% — loose, rides swings</span></div>
+    </div>
+  </div>
+
+  <div class="error-msg" id="errorMsg"></div>
+  <button class="run-btn" id="runBtn" onclick="runAnalysis()">Run Analysis</button>
+  <div class="loading" id="loading">Fetching data, running strategies and training ML models... this may take 20-30 seconds</div>
+
+  <div id="chartCard" style="display:none;">
+
+    <div class="chart-card">
+      <div class="chart-title" id="chartTitle">AAPL — Strategy Performance</div>
+      <div class="chart-sub" id="chartSub">Select a card below to enable the crosshair</div>
+      <div class="legend">
+        <div class="legend-item" onmouseenter="hl(0)" onmouseleave="rl()"><div class="legend-dot" style="background:#5a8fa8;"></div><div class="legend-label">Buy &amp; hold</div></div>
+        <div class="legend-item" onmouseenter="hl(1)" onmouseleave="rl()"><div class="legend-dot" style="background:#6a8f5a;"></div><div class="legend-label">Momentum</div></div>
+        <div class="legend-item" onmouseenter="hl(2)" onmouseleave="rl()"><div class="legend-dot" style="background:#a89a5a;"></div><div class="legend-label">Bollinger bands</div></div>
+        <div class="legend-item" onmouseenter="hl(3)" onmouseleave="rl()"><div class="legend-dot" style="background:#a86a5a;"></div><div class="legend-label">Hybrid bollinger momentum</div></div>
+        <div class="legend-item" onmouseenter="hl(4)" onmouseleave="rl()"><div class="legend-dot" style="background:#7a6aa8;"></div><div class="legend-label">Trailing stop loss</div></div>
+        <div class="legend-item" onmouseenter="hl(5)" onmouseleave="rl()"><div class="legend-dot" style="background:#5a9a8a;"></div><div class="legend-label">RSI</div></div>
+        <div class="legend-item" onmouseenter="hl(6)" onmouseleave="rl()"><div class="legend-dot" style="background:#a8785a;"></div><div class="legend-label">Short / bubble</div></div>
+      </div>
+      <div class="chart-wrap">
+        <div class="y-labels">
+          <span class="y-label" id="y0"></span>
+          <span class="y-label" id="y1"></span>
+          <span class="y-label" id="y2"></span>
+          <span class="y-label" id="y3"></span>
+        </div>
+        <div class="chart-inner">
+          <canvas id="chart" height="240" style="width:100%;display:block;cursor:crosshair;"></canvas>
+          <div class="tooltip" id="tooltip">
+            <div class="tt-date" id="ttDate"></div>
+            <div class="tt-val" id="ttVal"></div>
+            <div class="tt-delta" id="ttDelta"></div>
+          </div>
+        </div>
+        <div class="x-labels">
+          <span class="x-label" id="x0"></span>
+          <span class="x-label" id="x1"></span>
+          <span class="x-label" id="x2"></span>
+          <span class="x-label" id="x3"></span>
+          <span class="x-label" id="x4"></span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="cards-label">Click a card to track it · hover to highlight · click again to deselect</div>
+      <div class="cards-grid" id="cardsGrid"></div>
+
+      <div class="detail-panel" id="detailPanel">
+        <div class="detail-header">
+          <div class="detail-title" id="detailTitle">Strategy detail</div>
+          <div class="close-btn" onclick="closeDetail()">×</div>
+        </div>
+        <div class="detail-metrics" id="detailMetrics"></div>
+      </div>
+    </div>
+
+    <!-- ML Recommendation Tab -->
+    <div class="ml-card" id="mlCard">
+      <div class="ml-header">
+        <div class="ml-icon">🤖</div>
+        <div>
+          <div class="ml-title">AI Strategy Recommendation</div>
+          <div class="ml-sub" id="mlModelsUsed">GBM + LSTM Ensemble</div>
+        </div>
+      </div>
+
+      <div class="ml-regime" id="mlRegime">
+        <div class="ml-regime-label">Market regime</div>
+        <div class="ml-regime-val" id="mlRegimeVal">—</div>
+        <div class="bubble-bar-wrap">
+          <div class="bubble-bar-label">
+            <span>Bubble score</span>
+            <span id="mlBubbleScore">—</span>
+          </div>
+          <div class="bubble-bar-track">
+            <div class="bubble-bar-fill" id="mlBubbleBar" style="width:0%;background:#6a8f5a;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ml-grid">
+        <div class="ml-recommendation">
+          <div class="ml-rec-label">Recommended strategy</div>
+          <div style="display:flex;align-items:center;gap:10px;">
+          <div class="ml-rec-strategy" id="mlRecommendation">—</div>
+          <button id="whyBtn" onclick="askWhy()" style="display:none;background:#1a2a3a;border:0.5px solid #5a8fa8;color:#5a8fa8;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;">Why?</button>
+        </div>
+          <div class="ml-rec-confidence" id="mlConfidence" style="color:#6a8f5a;">—</div>
+          <div class="ml-models" style="margin-top:10px;">
+            <div class="ml-model-card">
+              <div class="ml-model-label">GBM prediction</div>
+              <div class="ml-model-val" id="mlGBM">—</div>
+            </div>
+            <div class="ml-model-card">
+              <div class="ml-model-label">LSTM prediction</div>
+              <div class="ml-model-val" id="mlLSTM">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ml-conditions">
+          <div class="ml-conditions-label">Current conditions</div>
+          <div class="ml-condition-row">
+            <div class="ml-condition-name">RSI</div>
+            <div class="ml-condition-val" id="mlRSI">—</div>
+          </div>
+          <div class="ml-condition-row">
+            <div class="ml-condition-name">MA trend</div>
+            <div class="ml-condition-val" id="mlTrend">—</div>
+          </div>
+          <div class="ml-condition-row">
+            <div class="ml-condition-name">Volatility (STD)</div>
+            <div class="ml-condition-val" id="mlVol">—</div>
+          </div>
+          <div class="ml-condition-row">
+            <div class="ml-condition-name">Bubble score</div>
+            <div class="ml-condition-val" id="mlBubbleVal">—</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ml-features">
+        <div class="ml-features-label">Top predictive features (GBM importance)</div>
+        <div id="mlFeatures"></div>
+      </div>
+
+      <div class="ml-disclaimer">
+        ⚠️ This recommendation is generated by machine learning models trained on historical data.
+        Past performance does not guarantee future results. This is not financial advice.
+        Short selling involves unlimited downside risk. Always consult a licensed financial advisor.
+      </div>
+    </div>
+
+  </div>
+
+  <div class="footer">Stock Strategy Analyzer · NYSE · USD · Not financial advice</div>
+</div>
+
+<script>
+var canvas, ctx, W, H=240;
+var colors=['#5a8fa8','#6a8f5a','#a89a5a','#a86a5a','#7a6aa8','#5a9a8a','#a8785a'];
+var seriesKeys=['market','momentum','bollinger','hybrid','trailing','rsi','short'];
+var seriesNames=['Buy & hold','Momentum','Bollinger bands','Hybrid bollinger momentum','Trailing stop loss','RSI','Short / bubble'];
+var activeLineIdx=null, selectedLineIdx=null, selectedColor=null, selectedCard=null;
+var chartData=null, CAPITAL=10000;
+
+function runAnalysis(){
+  var ticker   = document.getElementById('tickerInput').value.trim().toUpperCase();
+  var capital  = parseFloat(document.getElementById('capitalInput').value)||10000;
+  var start    = document.getElementById('startInput').value.trim();
+  var end      = document.getElementById('endInput').value.trim();
+  var stopLoss = parseInt(document.getElementById('stopSlider').value);
+  if(!ticker){showError('Please enter a ticker symbol.');return;}
+  if(!start||!end){showError('Please enter valid start and end dates.');return;}
+  CAPITAL=capital;
+  hideError();
+  setLoading(true);
+  closeDetail();
+
+  fetch('/analyze',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({ticker,start,end,capital,stop_loss_pct:stopLoss})
+  })
+  .then(function(r){return r.json();})
+  .then(function(data){
+    setLoading(false);
+    if(data.error){showError('Error: '+data.error);return;}
+    chartData=data;
+    stockbotContext=data;
+    document.getElementById('whyBtn').style.display='inline-block';
+    renderChart(data);
+    renderCards(data);
+    renderML(data.ml);
+    document.getElementById('chartCard').style.display='block';
+    document.getElementById('chartTitle').textContent=data.ticker+' — Strategy Performance';
+    document.getElementById('chartSub').textContent=data.start+' → '+data.end+' · $'+capital.toLocaleString()+' USD · select a card to enable crosshair';
+  })
+  .catch(function(err){
+    setLoading(false);
+    showError('Could not connect to server. Make sure app.py is running.');
+  });
+}
+
+function setLoading(on){
+  document.getElementById('loading').style.display=on?'block':'none';
+  document.getElementById('runBtn').disabled=on;
+  document.getElementById('runBtn').textContent=on?'Running analysis...':'Run Analysis';
+}
+function showError(msg){var e=document.getElementById('errorMsg');e.textContent=msg;e.style.display='block';}
+function hideError(){document.getElementById('errorMsg').style.display='none';}
+
+// ── chart ───────────────────────────────────────────────────────────────────
+
+function renderChart(data){
+  canvas=document.getElementById('chart');
+  ctx=canvas.getContext('2d');
+  canvas.width=canvas.offsetWidth||580;
+  W=canvas.width;
+  var allVals=seriesKeys.reduce(function(a,k){
+    return a.concat((data.series[k]||[]).filter(function(v){return v!==null;}));
+  },[]);
+  var minV=Math.min.apply(null,allVals)*0.98;
+  var maxV=Math.max.apply(null,allVals)*1.02;
+  var range=maxV-minV;
+  for(var i=0;i<4;i++){
+    var v=maxV-(i/3)*range;
+    document.getElementById('y'+i).textContent=fmtK(v);
+  }
+  var dates=data.dates;
+  var step=Math.floor((dates.length-1)/4);
+  for(var i=0;i<5;i++){
+    var d=new Date(dates[Math.min(i*step,dates.length-1)]);
+    document.getElementById('x'+i).textContent=d.toLocaleDateString('en-US',{month:'short',year:'numeric'});
+  }
+  activeLineIdx=null;selectedLineIdx=null;selectedColor=null;selectedCard=null;
+  drawLines(minV,maxV);
+  canvas.onmousemove=function(e){onMouseMove(e,minV,maxV);};
+  canvas.onmouseleave=function(){document.getElementById('tooltip').style.display='none';drawLines(minV,maxV);};
+  canvas._minV=minV;canvas._maxV=maxV;
+}
+
+function fmtK(v){
+  if(v>=1000000)return '$'+(v/1000000).toFixed(1)+'M';
+  if(v>=1000)return '$'+Math.round(v/1000)+'K';
+  return '$'+Math.round(v);
+}
+function toX(i,n){return(i/(n-1))*W;}
+function toY(v,minV,maxV){return H-((v-minV)/(maxV-minV))*(H-20)-4;}
+
+function drawLines(minV,maxV){
+  if(!ctx||!chartData)return;
+  ctx.clearRect(0,0,W,H);
+  for(var g=0;g<=4;g++){
+    var y=4+(g/4)*(H-20);
+    ctx.strokeStyle='#1c1c1c';ctx.lineWidth=0.75;
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();
+    var x=(g/4)*W;ctx.strokeStyle='#161616';
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();
+  }
+  var n=chartData.dates.length;
+  seriesKeys.forEach(function(key,idx){
+    var pts=chartData.series[key]||[];
+    var isActive=activeLineIdx===idx,isSelected=selectedLineIdx===idx;
+    var isNone=activeLineIdx===null&&selectedLineIdx===null;
+    var alpha=1;
+    if(!isNone){if(selectedLineIdx!==null)alpha=isSelected?1:0.08;else alpha=isActive?1:0.15;}
+    ctx.globalAlpha=alpha;ctx.strokeStyle=colors[idx];
+    ctx.lineWidth=isSelected?2.5:isActive?2.5:1.25;ctx.lineJoin='round';
+    ctx.beginPath();
+    var started=false;
+    for(var i=0;i<pts.length;i++){
+      if(pts[i]===null)continue;
+      if(!started){ctx.moveTo(toX(i,n),toY(pts[i],minV,maxV));started=true;}
+      else ctx.lineTo(toX(i,n),toY(pts[i],minV,maxV));
+    }
+    ctx.stroke();ctx.globalAlpha=1;
+    var lastVal=null,lastIdx=0;
+    for(var i=pts.length-1;i>=0;i--){if(pts[i]!==null){lastVal=pts[i];lastIdx=i;break;}}
+    if(lastVal!==null){
+      ctx.fillStyle=colors[idx];ctx.beginPath();
+      ctx.arc(toX(lastIdx,n),toY(lastVal,minV,maxV),isSelected||isActive?4:2.5,0,Math.PI*2);ctx.fill();
+    }
+  });
+}
+
+function drawCrosshair(px,minV,maxV){
+  drawLines(minV,maxV);
+  if(selectedLineIdx===null)return;
+  var key=seriesKeys[selectedLineIdx];
+  var pts=chartData.series[key]||[];
+  var n=pts.length;
+  var dataI=Math.max(0,Math.min(n-1,Math.round((px/W)*(n-1))));
+  while(dataI>0&&pts[dataI]===null)dataI--;
+  if(pts[dataI]===null)return;
+  var cx=toX(dataI,n),cy=toY(pts[dataI],minV,maxV);
+  ctx.globalAlpha=0.25;ctx.strokeStyle='#aaa';ctx.lineWidth=0.75;ctx.setLineDash([4,4]);
+  ctx.beginPath();ctx.moveTo(cx,0);ctx.lineTo(cx,H);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,cy);ctx.lineTo(W,cy);ctx.stroke();
+  ctx.setLineDash([]);ctx.globalAlpha=1;
+  ctx.fillStyle=colors[selectedLineIdx];ctx.beginPath();ctx.arc(cx,cy,5,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#0a0a0a';ctx.lineWidth=2;ctx.beginPath();ctx.arc(cx,cy,5,0,Math.PI*2);ctx.stroke();
+}
+
+function onMouseMove(e,minV,maxV){
+  if(selectedLineIdx===null)return;
+  var rect=canvas.getBoundingClientRect();
+  var px=(e.clientX-rect.left)*(W/rect.width);
+  var key=seriesKeys[selectedLineIdx];
+  var pts=chartData.series[key]||[];
+  var n=pts.length;
+  var dataI=Math.max(0,Math.min(n-1,Math.round((px/W)*(n-1))));
+  while(dataI>0&&pts[dataI]===null)dataI--;
+  if(pts[dataI]===null)return;
+  var val=pts[dataI];
+  var delta=val-CAPITAL,pct=((delta/CAPITAL)*100).toFixed(1),sign=delta>=0?'+':'';
+  var d=new Date(chartData.dates[dataI]);
+  document.getElementById('ttDate').textContent=d.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+  var ttVal=document.getElementById('ttVal');
+  ttVal.textContent='$'+Math.round(val).toLocaleString()+' USD';
+  ttVal.style.color=selectedColor;
+  var ttDelta=document.getElementById('ttDelta');
+  ttDelta.textContent=sign+'$'+Math.round(delta).toLocaleString()+' ('+sign+pct+'%)';
+  ttDelta.style.color=delta>=0?'#6a8f5a':'#a86a5a';
+  var tipLeft=e.clientX-rect.left+16;
+  if(tipLeft+210>rect.width)tipLeft=e.clientX-rect.left-220;
+  var tt=document.getElementById('tooltip');
+  tt.style.left=tipLeft+'px';tt.style.top=Math.max(0,e.clientY-rect.top-50)+'px';tt.style.display='block';
+  drawCrosshair(px,minV,maxV);
+}
+
+// ── cards ───────────────────────────────────────────────────────────────────
+
+function renderCards(data){
+  var grid=document.getElementById('cardsGrid');
+  grid.innerHTML='';
+  selectedLineIdx=null;selectedColor=null;selectedCard=null;
+
+  var strategies=[
+    {key:'market',   name:'Buy & hold',                lineIdx:0, color:'#5a8fa8', isShort:false},
+    {key:'momentum', name:'Momentum',                  lineIdx:1, color:'#6a8f5a', isShort:false},
+    {key:'bollinger',name:'Bollinger bands',           lineIdx:2, color:'#a89a5a', isShort:false},
+    {key:'hybrid',   name:'Hybrid bollinger momentum', lineIdx:3, color:'#a86a5a', isShort:false},
+    {key:'trailing', name:'Trailing stop loss',        lineIdx:4, color:'#7a6aa8', isShort:false},
+    {key:'rsi',      name:'RSI',                       lineIdx:5, color:'#5a9a8a', isShort:false},
+    {key:'short',    name:'Short / bubble',            lineIdx:6, color:'#a8785a', isShort:true},
+  ];
+
+  strategies.sort(function(a,b){
+    return data.metrics[a.key].pct_return - data.metrics[b.key].pct_return;
+  });
+
+  strategies.forEach(function(s,rank){
+    var m=data.metrics[s.key];
+    var isBest=rank===strategies.length-1;
+    var isPos=m.delta>=0;
+    var sign=isPos?'+':'';
+    var rankLabel=rank===0?'#1 least':'#'+(rank+1)+(isBest?' best':'');
+
+    var card=document.createElement('div');
+    card.className='card';
+    var shortWarning=s.isShort?'<div class="short-warning">⚠️ includes shorting</div>':'';
+    card.innerHTML=
+      '<div class="card-accent" style="background:'+s.color+';"></div>'+
+      '<div class="card-body">'+
+        '<div class="card-rank">'+rankLabel+(isBest?' <span class="best-badge">best</span>':'')+' </div>'+
+        '<div class="card-name">'+s.name+'</div>'+
+        '<div class="card-start">Start $'+CAPITAL.toLocaleString()+'</div>'+
+        '<div class="card-end">$'+Math.round(m.final_value).toLocaleString()+'</div>'+
+        '<span class="card-delta '+(isPos?'pos':'neg')+'">'+sign+'$'+Math.round(m.delta).toLocaleString()+' · '+sign+m.pct_return.toFixed(1)+'%</span>'+
+        shortWarning+
+      '</div>';
+
+    card.addEventListener('mouseenter',function(){hl(s.lineIdx);});
+    card.addEventListener('mouseleave',function(){rl();});
+    card.addEventListener('click',function(){selectCard(card,s,m,rank,strategies.length);});
+    grid.appendChild(card);
+  });
+}
+
+function selectCard(el,s,m,rank,total){
+  if(selectedCard===el){closeDetail();return;}
+  if(selectedCard)selectedCard.classList.remove('selected');
+  selectedCard=el;el.classList.add('selected');
+  selectedLineIdx=s.lineIdx;selectedColor=s.color;activeLineIdx=null;
+  document.getElementById('chartSub').textContent=chartData.ticker+' · hover chart to track '+s.name+' · USD';
+  var cards=document.getElementById('cardsGrid').querySelectorAll('.card');
+  cards.forEach(function(c){c.style.opacity=c===el?'1':'0.3';c.style.transform=c===el?'':'scale(0.97)';});
+  document.getElementById('detailTitle').textContent=s.name+' — detailed metrics';
+  document.getElementById('detailTitle').style.borderLeft='3px solid '+s.color;
+  document.getElementById('detailTitle').style.paddingLeft='10px';
+
+  // build metrics — standard for most, extended for short
+  var metricsHtml='';
+  if(s.isShort){
+    metricsHtml=buildShortMetrics(m);
+  } else {
+    metricsHtml=buildStandardMetrics(m);
+  }
+  document.getElementById('detailMetrics').innerHTML=metricsHtml;
+
+  var panel=document.getElementById('detailPanel');
+  panel.style.display='block';
+  requestAnimationFrame(function(){panel.classList.add('visible');});
+  drawLines(canvas._minV,canvas._maxV);
+}
+
+function buildStandardMetrics(m){
+  var vsbh=m.vs_bh===0?'baseline':((m.vs_bh>0?'+':'')+m.vs_bh.toFixed(1)+'%');
+  var vsbhClass=m.vs_bh===0?'':'metric-val '+(m.vs_bh>0?'green':'red');
+  return [
+    metricBox('Final value','$'+Math.round(m.final_value).toLocaleString(),'green'),
+    metricBox('Total return',(m.pct_return>=0?'+':'')+m.pct_return.toFixed(1)+'%','green'),
+    metricBox('Time in market',m.time_in_market+'%',''),
+    metricBox('Sharpe ratio',m.sharpe.toFixed(2),''),
+    metricBox('Max drawdown',m.max_drawdown.toFixed(1)+'%','red'),
+    metricBox('Dollar gain',(m.delta>=0?'+$':'-$')+Math.abs(Math.round(m.delta)).toLocaleString(),'green'),
+    metricBox('Starting capital · USD','$'+CAPITAL.toLocaleString(),'gold'),
+    metricBox('vs buy & hold',vsbh,m.vs_bh>0?'green':m.vs_bh<0?'red':''),
+  ].join('');
+}
+
+function buildShortMetrics(m){
+  var vsbh=m.vs_bh===0?'baseline':((m.vs_bh>0?'+':'')+m.vs_bh.toFixed(1)+'%');
+  return [
+    metricBox('Final value','$'+Math.round(m.final_value).toLocaleString(),'green'),
+    metricBox('Total return',(m.pct_return>=0?'+':'')+m.pct_return.toFixed(1)+'%','green'),
+    metricBox('Time long',(m.time_long||0).toFixed(1)+'%',''),
+    metricBox('Time short',(m.time_short||0).toFixed(1)+'%','amber'),
+    metricBox('Time cash',(m.time_cash||0).toFixed(1)+'%',''),
+    metricBox('Margin calls',m.margin_calls||0,''),
+    metricBox('Borrowing cost','-$'+Math.abs(Math.round(m.borrowing_cost||0)).toLocaleString(),'red'),
+    metricBox('Bubble score',(m.bubble_score||0)+'/100','amber'),
+    metricBox('Max drawdown',m.max_drawdown.toFixed(1)+'%','red'),
+    metricBox('Sharpe ratio',m.sharpe.toFixed(2),''),
+    metricBox('Starting capital · USD','$'+CAPITAL.toLocaleString(),'gold'),
+    metricBox('vs buy & hold',vsbh,m.vs_bh>0?'green':m.vs_bh<0?'red':''),
+  ].join('');
+}
+
+function metricBox(label,val,cls){
+  return '<div class="metric"><div class="metric-label">'+label+'</div><div class="metric-val '+(cls||'')+'">'+val+'</div></div>';
+}
+
+function closeDetail(){
+  var panel=document.getElementById('detailPanel');
+  panel.classList.remove('visible');
+  setTimeout(function(){panel.style.display='none';},300);
+  var cards=document.getElementById('cardsGrid').querySelectorAll('.card');
+  cards.forEach(function(c){c.style.opacity='1';c.style.transform='';});
+  if(selectedCard)selectedCard.classList.remove('selected');
+  selectedCard=null;selectedLineIdx=null;selectedColor=null;activeLineIdx=null;
+  if(chartData)document.getElementById('chartSub').textContent=chartData.start+' → '+chartData.end+' · $'+CAPITAL.toLocaleString()+' USD · select a card to enable crosshair';
+  document.getElementById('tooltip').style.display='none';
+  if(canvas)drawLines(canvas._minV,canvas._maxV);
+}
+
+function hl(idx){if(selectedLineIdx!==null)return;activeLineIdx=idx;if(canvas)drawLines(canvas._minV,canvas._maxV);}
+function rl(){if(selectedLineIdx!==null)return;activeLineIdx=null;if(canvas)drawLines(canvas._minV,canvas._maxV);}
+
+// ── ML tab ──────────────────────────────────────────────────────────────────
+
+function renderML(ml){
+  if(!ml||ml.error){
+    document.getElementById('mlRecommendation').textContent=ml&&ml.error?ml.error:'No prediction available';
+    return;
+  }
+
+  document.getElementById('mlModelsUsed').textContent=ml.models_used||'GBM Only';
+  document.getElementById('mlRecommendation').textContent=ml.recommendation||'—';
+  document.getElementById('mlConfidence').textContent='Confidence: '+(ml.confidence||0)+'%';
+  document.getElementById('mlConfidence').style.color=ml.confidence>70?'#6a8f5a':ml.confidence>50?'#a89a5a':'#a86a5a';
+  document.getElementById('mlGBM').textContent=(ml.gbm_prediction||'—')+' ('+(ml.gbm_confidence||0)+'%)';
+  document.getElementById('mlLSTM').textContent=(ml.lstm_prediction||'N/A')+
+    (ml.lstm_confidence&&ml.lstm_confidence!=='N/A'?' ('+ml.lstm_confidence+'%)':'');
+  document.getElementById('mlRegimeVal').textContent=ml.regime||'—';
+  document.getElementById('mlRSI').textContent=(ml.current_rsi||'—')+
+    (ml.current_rsi?(ml.current_rsi<30?' — oversold':ml.current_rsi>70?' — overbought':' — neutral'):'');
+  document.getElementById('mlTrend').textContent=ml.current_ma_trend||'—';
+  document.getElementById('mlVol').textContent=(ml.current_volatility||'—')+'%';
+  document.getElementById('mlBubbleVal').textContent=(ml.bubble_score||0)+'/100';
+  document.getElementById('mlBubbleScore').textContent=(ml.bubble_score||0)+'/100';
+
+  // bubble bar color
+  var bs=ml.bubble_score||0;
+  var barColor=bs>85?'#a86a5a':bs>70?'#a89a5a':'#6a8f5a';
+  document.getElementById('mlBubbleBar').style.width=Math.min(bs,100)+'%';
+  document.getElementById('mlBubbleBar').style.background=barColor;
+
+  // feature importance bars
+  var featHtml='';
+  if(ml.top_features&&ml.top_features.length){
+    ml.top_features.forEach(function(f){
+      featHtml+=
+        '<div class="feature-row">'+
+          '<div class="feature-name">'+f.name+'</div>'+
+          '<div class="feature-bar-track"><div class="feature-bar-fill" style="width:'+Math.min(f.importance*2,100)+'%;"></div></div>'+
+          '<div class="feature-pct">'+f.importance.toFixed(1)+'%</div>'+
+        '</div>';
+    });
+  }
+  document.getElementById('mlFeatures').innerHTML=featHtml||'<div style="color:var(--text4);font-size:12px;">No feature data available</div>';
+}
+
+window.addEventListener('resize',function(){
+  if(!canvas)return;
+  canvas.width=canvas.offsetWidth||580;W=canvas.width;
+  if(chartData)drawLines(canvas._minV,canvas._maxV);
+});
+
+document.addEventListener('keydown',function(e){if(e.key==='Enter')runAnalysis();});
+
+// ── StockBot ──────────────────────────────────────────────────────────────────
+var stockbotContext = null;
+
+document.getElementById('stockbotSend').addEventListener('click', sendToStockbot);
+document.getElementById('stockbotInput').addEventListener('keydown', function(e){
+  if(e.key === 'Enter') sendToStockbot();
+});
+
+function sendToStockbot(){
+  var input = document.getElementById('stockbotInput');
+  var msg = input.value.trim();
+  if(!msg) return;
+  if(!stockbotContext){
+    appendStockbotMsg('bot', 'Please run an analysis first so I have data to work with!');
+    return;
+  }
+  appendStockbotMsg('user', msg);
+  input.value = '';
+  document.getElementById('stockbotSend').disabled = true;
+  appendStockbotMsg('bot thinking', 'Thinking...');
+
+  fetch('/stockbot', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ message: msg, context: stockbotContext })
+  })
+  .then(function(r){ return r.json(); })
+  .then(function(data){
+    removeThinking();
+    appendStockbotMsg('bot', data.reply || 'Sorry, I could not get a response.');
+    document.getElementById('stockbotSend').disabled = false;
+  })
+  .catch(function(){
+    removeThinking();
+    appendStockbotMsg('bot', 'Error connecting to StockBot. Make sure Ollama is running.');
+    document.getElementById('stockbotSend').disabled = false;
+  });
+}
+
+function appendStockbotMsg(type, text){
+  var messages = document.getElementById('stockbotMessages');
+  var div = document.createElement('div');
+  div.className = 'stockbot-msg ' + type;
+  div.textContent = text;
+  messages.appendChild(div);
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function removeThinking(){
+  var messages = document.getElementById('stockbotMessages');
+  var thinking = messages.querySelector('.thinking');
+  if(thinking) messages.removeChild(thinking);
+}
+
+function askWhy(){
+  if(!stockbotContext) return;
+  var ml = stockbotContext.ml || {};
+  var question = 'Explain in detail why you recommended ' +
+    (ml.recommendation || 'this strategy') +
+    ' over the other strategies. Consider the current RSI of ' + (ml.current_rsi || '?') +
+    ', bubble score of ' + (ml.bubble_score || '?') + '/100, MA trend of ' + (ml.current_ma_trend || '?') +
+    ', and market regime: ' + (ml.regime || '?') + '. Be specific and thorough.';
+  document.getElementById('stockbotInput').value = question;
+  sendToStockbot();
+}
+
+</script>
+</body>
+</html>
