@@ -7,7 +7,9 @@ import math
 import os
 
 # ML imports
-import ollama as ollama_client
+import os
+import os
+import requests
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import warnings
@@ -176,13 +178,11 @@ def calculate_bubble_and_short(df):
         High volatility while rising → max 25 pts
         Volume spike                → max 20 pts
 
-    Signal logic:
-        Bubble_Score > 85 → -1  (extreme bubble → short)
-        Bubble_Score > 70 →  0  (mild bubble → stay out)
+    Signal logic (lowered thresholds for realistic shorting frequency):
+        Bubble_Score > 65 → -1  (bubble → short)
+        Bubble_Score > 45 →  0  (mild overheating → stay out)
         RSI < 30          →  1  (oversold → buy)
         else              → nan → ffill
-
-    Short borrowing cost = 1% annual / 252 trading days
     """
     deviation    = (df["Close"] - df["MA200"]) / df["MA200"] * 100
     rsi_extended = (df["RSI"] > 70).rolling(10).sum()
@@ -195,20 +195,20 @@ def calculate_bubble_and_short(df):
 
     score = pd.Series(0.0, index=df.index)
     score += np.clip(deviation / 2, 0, 30)
-    score += np.clip(rsi_extended * 2.5, 0, 25)
-    score += np.where(rising & (vol > 2), np.clip(vol * 5, 0, 25), 0)
+    score += np.clip(rsi_extended * 3.5, 0, 25)
+    score += np.where(rising & (vol > 1.5), np.clip(vol * 6, 0, 25), 0)
     score += np.clip((vol_spike - 1) * 10, 0, 20)
 
     df["Bubble_Score"]    = score
     df["Price_Deviation"] = deviation
 
     df["Short_Signal"] = np.where(
-        score > 85, -1,
-        np.where(score > 70, 0,
-            np.where(df["RSI"] < 30, 1, np.nan))
+        score > 50, -1,           # extreme bubble → short
+        np.where(score > 35, 0,   # mild overheating → defensive cash
+            1)                    # default: stay long (was: wait for RSI<30)
     )
     df["Short_Signal"] = df["Short_Signal"].ffill()
-    df["Short_Cost"]   = np.where(df["Short_Signal"].shift(1) == -1, 0.01 / 252, 0)
+    df["Short_Signal"] = df["Short_Signal"].fillna(1)  # treat early NaN as long (default)
     return df
 
 # ── returns ───────────────────────────────────────────────────────────────────
@@ -218,11 +218,9 @@ def calculate_returns(df, capital):
     Calculates daily and cumulative returns for all seven strategies.
     shift(1) prevents lookahead bias.
 
-    Short signal math:
-        signal=1  × +3% = +3%  (long profit)
-        signal=0  × +3% =  0%  (cash)
-        signal=-1 × +3% = -3%  (short loss)
-        signal=-1 × -3% = +3%  (short profit)
+    Long strategies use signal × market return.
+    Short strategy uses share-based tracking with 150% margin requirement
+    and knock-out barrier (forced liquidation when stock rises 33% from short entry).
     """
     df["Market_Returns"]    = df["Close"].pct_change()
     df["Momentum_Returns"]  = df["Momentum_Signal"].shift(1)  * df["Market_Returns"]
@@ -230,7 +228,6 @@ def calculate_returns(df, capital):
     df["Hybrid_Returns"]    = df["Hybrid_Signal"].shift(1)    * df["Market_Returns"]
     df["Trailing_Returns"]  = df["Trailing_Signal"].shift(1)  * df["Market_Returns"]
     df["RSI_Returns"]       = df["RSI_Signal"].shift(1)       * df["Market_Returns"]
-    df["Short_Returns"]     = (df["Short_Signal"].shift(1) * df["Market_Returns"]) - df["Short_Cost"]
 
     df["Market_Cumulative"]    = (1 + df["Market_Returns"]).cumprod()    * capital
     df["Momentum_Cumulative"]  = (1 + df["Momentum_Returns"]).cumprod()  * capital
@@ -238,9 +235,144 @@ def calculate_returns(df, capital):
     df["Hybrid_Cumulative"]    = (1 + df["Hybrid_Returns"]).cumprod()    * capital
     df["Trailing_Cumulative"]  = (1 + df["Trailing_Returns"]).cumprod()  * capital
     df["RSI_Cumulative"]       = (1 + df["RSI_Returns"]).cumprod()       * capital
-    df["Short_Cumulative"]     = (1 + df["Short_Returns"]).cumprod()     * capital
 
-    df["Margin_Call"] = df["Short_Cumulative"] < capital * 0.5
+    # ── Short selling with proper margin & knock-out barrier ──
+    df = simulate_short_strategy(df, capital)
+
+    return df
+
+
+def simulate_short_strategy(df, capital):
+    """
+    Realistic short selling simulation with margin requirements.
+
+    Rules (mirrors real brokerage practice):
+        - 150% margin requirement (Reg T): can short up to 66.7% of capital
+        - Knock-out barrier: forced liquidation if stock rises 33% from short entry
+          (this depletes the posted margin)
+        - 1% annual borrowing cost, accrued daily
+        - Position transitions: must close current position before opening new one
+        - On knock-out, position moves to cash and waits for next signal
+
+    Tracking:
+        position: 0=cash, 1=long, -1=short
+        entry_price: price at which current position was opened
+        shares: number of shares (positive=long, negative=short)
+        cash: available cash
+        portfolio_value: total portfolio value for cumulative chart
+    """
+    n = len(df)
+    closes = df["Close"].values
+    signals = df["Short_Signal"].values
+
+    portfolio_values = np.zeros(n)
+    daily_returns = np.zeros(n)
+    short_costs = np.zeros(n)
+    margin_call_events = np.zeros(n, dtype=bool)
+    position_tracker = np.zeros(n)  # for time-in-position metrics
+
+    cash = capital
+    shares = 0.0
+    position = 0  # 0=cash, 1=long, -1=short
+    entry_price = 0.0
+    knockout_price = 0.0  # only relevant when position == -1
+    margin_posted = 0.0
+    daily_borrow_rate = 0.01 / 252  # 1% annual
+    locked_out = False  # set True after knock-out, cleared when signal != -1
+
+    # Day 0 — initialize at capital, no position yet
+    portfolio_values[0] = capital
+    position_tracker[0] = 0
+
+    for i in range(1, n):
+        price = closes[i]
+        prev_signal = signals[i - 1]  # signal from yesterday governs today (shift(1) logic)
+
+        # ── Step 1: Check knock-out if currently short ──
+        if position == -1 and price >= knockout_price:
+            # Forced liquidation — margin depleted
+            cash = 0.0
+            shares = 0
+            position = 0
+            entry_price = 0
+            margin_posted = 0
+            margin_call_events[i] = True
+            locked_out = True  # cannot re-enter short until signal changes away from -1
+
+        # ── Step 2: Execute position transition based on yesterday's signal ──
+        elif prev_signal == 1 and position != 1:
+            # Going long: close any existing position first
+            if position == -1:
+                pnl = (entry_price - price) * abs(shares)
+                cash = margin_posted + pnl + cash  # return margin + P&L
+                margin_posted = 0
+            # Open long with all cash
+            shares = cash / price if price > 0 else 0
+            cash = 0.0
+            position = 1
+            entry_price = price
+
+        elif prev_signal == -1 and position != -1 and not locked_out:
+            # Going short: close any existing position first
+            if position == 1:
+                cash = shares * price
+                shares = 0
+            # 150% margin: short_value is what we sell short
+            # We keep proceeds in cash + must post 50% additional margin
+            if cash > 0:
+                short_value = cash / 1.5
+                margin_posted = short_value * 0.5
+                shares = -(short_value / price) if price > 0 else 0
+                cash = cash - margin_posted
+                position = -1
+                entry_price = price
+                knockout_price = entry_price * 1.5  # forced close at 50% rise
+
+        elif prev_signal == 0 and position != 0:
+            # Going to cash: close existing position
+            if position == 1:
+                cash = shares * price
+            elif position == -1:
+                pnl = (entry_price - price) * abs(shares)
+                cash = margin_posted + pnl + cash
+                margin_posted = 0
+            shares = 0
+            position = 0
+            entry_price = 0
+
+        # Clear lockout when signal changes away from short
+        if prev_signal != -1:
+            locked_out = False
+
+        # ── Step 3: Apply daily borrowing cost if short ──
+        if position == -1:
+            borrow_cost = abs(shares) * price * daily_borrow_rate
+            cash -= borrow_cost
+            short_costs[i] = borrow_cost
+
+        # ── Step 4: Calculate portfolio value ──
+        if position == 1:
+            portfolio_values[i] = shares * price
+        elif position == -1:
+            pnl = (entry_price - price) * abs(shares)
+            portfolio_values[i] = cash + margin_posted + pnl
+        else:
+            portfolio_values[i] = cash
+
+        # Track position for time-in metrics
+        position_tracker[i] = position
+
+        # Daily return for sharpe calculation
+        if portfolio_values[i - 1] > 0:
+            daily_returns[i] = (portfolio_values[i] - portfolio_values[i - 1]) / portfolio_values[i - 1]
+        else:
+            daily_returns[i] = 0
+
+    df["Short_Cumulative"] = portfolio_values
+    df["Short_Returns"]    = daily_returns
+    df["Short_Cost"]       = short_costs
+    df["Margin_Call"]      = margin_call_events
+    df["Short_Position"]   = position_tracker  # tracks actual position taken (not just signal)
     return df
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -307,14 +439,15 @@ def calculate_metrics(df, col_returns, col_signal, capital):
 def calculate_short_metrics(df, capital):
     """
     Extended metrics for short/bubble strategy.
-    Adds time breakdown, borrowing costs, margin calls.
+    Uses Short_Position (actual position taken) instead of Short_Signal,
+    since knock-out events force the position to cash regardless of signal.
     """
     standard = calculate_metrics(df, "Short_Returns", None, capital)
 
-    standard["time_long"]      = round(safe_float((df["Short_Signal"] == 1).mean())  * 100, 1)
-    standard["time_cash"]      = round(safe_float((df["Short_Signal"] == 0).mean())  * 100, 1)
-    standard["time_short"]     = round(safe_float((df["Short_Signal"] == -1).mean()) * 100, 1)
-    standard["borrowing_cost"] = round(safe_float(df["Short_Cost"].sum()) * capital, 2)
+    standard["time_long"]      = round(safe_float((df["Short_Position"] == 1).mean())  * 100, 1)
+    standard["time_cash"]      = round(safe_float((df["Short_Position"] == 0).mean())  * 100, 1)
+    standard["time_short"]     = round(safe_float((df["Short_Position"] == -1).mean()) * 100, 1)
+    standard["borrowing_cost"] = round(safe_float(df["Short_Cost"].sum()), 2)
     standard["margin_calls"]   = int(df["Margin_Call"].sum())
     standard["bubble_score"]   = round(safe_float(df["Bubble_Score"].iloc[-1]), 1)
 
@@ -792,15 +925,33 @@ CRITICAL INSTRUCTIONS:
 6. Be concise, friendly, and helpful. Keep responses under 200 words unless the user asks for detail.
 """
 
-        response = ollama_client.chat(
-            model="llama3",
-            messages=[
-                {"role": "system", "content": context_prompt},
-                {"role": "user",   "content": message}
-            ]
+        # Call Groq API (free tier, fast Llama 3.1)
+        groq_api_key = os.environ.get("GROQ_API_KEY", "")
+        if not groq_api_key:
+            return jsonify({"reply": "StockBot is not configured. Set GROQ_API_KEY environment variable in Render settings."}), 200
+
+        groq_response = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {groq_api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "llama-3.1-8b-instant",
+                "messages": [
+                    {"role": "system", "content": context_prompt},
+                    {"role": "user",   "content": message}
+                ],
+                "temperature": 0.7,
+                "max_tokens": 600
+            },
+            timeout=30
         )
 
-        reply = response["message"]["content"]
+        if groq_response.status_code != 200:
+            return jsonify({"reply": f"StockBot error ({groq_response.status_code}): {groq_response.text[:200]}"}), 200
+
+        reply = groq_response.json()["choices"][0]["message"]["content"]
         return jsonify({"reply": reply})
 
     except Exception as e:
@@ -812,5 +963,6 @@ if __name__ == "__main__":
     print("Starting Stock Strategy Analyzer...")
     print(f"LSTM available : {LSTM_AVAILABLE}")
     print(f"Device         : {DEVICE}")
-    print("Open your browser at: http://localhost:8080")
-    app.run(debug=True, port=5000, host='127.0.0.1')
+    print("Open your browser at: http://localhost:5000")
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
