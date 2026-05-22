@@ -1,98 +1,99 @@
-═══════════════════════════════════════════════════════
-  STOCK STRATEGY ANALYZER — SETUP INSTRUCTIONS
-═══════════════════════════════════════════════════════
+# Stock Strategy Analyzer
 
-FILES IN THIS FOLDER:
-  app.py                    → Flask backend (Python)
-  stock_strategy_widget.html → Frontend web interface
-  README.txt                → This file
+An AI-powered web application that backtests seven trading strategies against historical market data and uses a machine learning ensemble to recommend the optimal strategy for the next 30 days based on current market conditions.
 
-═══════════════════════════════════════════════════════
-  STEP 1 — INSTALL DEPENDENCIES (first time only)
-═══════════════════════════════════════════════════════
+Built with Flask, PyTorch, and scikit-learn. Features StockBot — a conversational AI assistant that explains every recommendation in plain English.
 
-Open Command Prompt and run:
+## Features
 
-  pip install flask flask-cors pandas numpy yfinance scikit-learn xgboost tensorflow
+- **Seven trading strategies** backtested side by side: Buy & Hold, Momentum, Bollinger Bands, Hybrid Bollinger-Momentum, Trailing Stop Loss, RSI, and Short/Bubble
+- **ML strategy recommendation** powered by a Gradient Boosted Machine (GBM) + LSTM neural network ensemble
+- **Bubble detection** that scores market overheating on a 0-100 scale using price deviation, RSI extension, volatility, and volume signals
+- **Realistic short selling** with 150% margin requirements and knock-out barrier liquidation (mirrors real brokerage mechanics)
+- **StockBot AI assistant** that explains recommendations, compares strategies against Buy & Hold, and answers questions about your analysis
+- **Interactive performance chart** with per-strategy crosshair tracking
+- **Risk metrics** for every strategy: total return, Sharpe ratio, maximum drawdown, and time in market
+- **Light and dark themes**
 
-If pip doesn't work try:
-  py -m pip install flask flask-cors pandas numpy yfinance scikit-learn xgboost tensorflow
+## How It Works
 
-Note: TensorFlow is optional. If it fails to install the app
-will still work using GBM only (no LSTM).
+The analyzer pulls historical price data for any US-listed ticker, then runs each of the seven strategies through a backtest starting from a configurable capital amount. Each strategy generates buy, sell, hold, or short signals based on its own logic.
 
-═══════════════════════════════════════════════════════
-  STEP 2 — RUN THE APP
-═══════════════════════════════════════════════════════
+The ML ensemble analyzes current technical indicators (RSI, moving average trends, volatility, bubble score, and market regime) and predicts which strategy is best positioned for the next 30 days. Unlike a simple historical ranking, the model optimizes for forward-looking conditions — it can recommend Buy & Hold during steady uptrends, defensive cash positions during overheating, or active shorting during extreme bubbles.
 
-1. Open Command Prompt
-2. Navigate to this folder:
-     cd C:\Users\hrida\Desktop\Python_Projects
-3. Run Flask:
-     python app.py
-4. Open Chrome and go to:
-     http://localhost:8080
+StockBot wraps the entire analysis in a conversational layer. Ask it why a strategy was recommended, what RSI means, or how the current market regime affects your stock, and it responds using the actual numbers from your analysis.
 
-═══════════════════════════════════════════════════════
-  STEP 3 — USE THE APP
-═══════════════════════════════════════════════════════
+## Tech Stack
 
-1. Enter a ticker symbol (e.g. AAPL, GME, NVDA, TSLA)
-2. Set your starting capital
-3. Set start and end dates (use at least 3 years for ML)
-4. Adjust trailing stop loss with the slider
-5. Click Run Analysis
+- **Backend:** Flask (Python)
+- **ML:** PyTorch (LSTM), scikit-learn (GBM), trained on GPU when available
+- **Data:** yfinance for historical market data
+- **AI Assistant:** Llama 3.1 via Groq API
+- **Frontend:** Vanilla JavaScript with HTML5 Canvas charting
 
-Note: ML model training takes 20-30 seconds. This is normal.
-The app will show "Running analysis..." while it works.
+## Setup
 
-═══════════════════════════════════════════════════════
-  WHAT YOU GET
-═══════════════════════════════════════════════════════
+### Prerequisites
 
-7 STRATEGIES:
-  1. Buy & Hold              → baseline, just hold the stock
-  2. Momentum                → MA50 vs MA200 crossover
-  3. Bollinger Bands         → mean reversion on price bands
-  4. Hybrid Bollinger Mom.   → both signals must agree to buy
-  5. Trailing Stop Loss      → sells X% below peak price
-  6. RSI                     → overbought/oversold signal
-  7. Short / Bubble          → longs, goes cash, or shorts based on bubble score
+- Python 3.10, 3.11, or 3.12 (PyTorch does not yet support 3.13+)
+- A free Groq API key from [console.groq.com](https://console.groq.com)
 
-AI RECOMMENDATION TAB:
-  → GBM model predicts best strategy from current market features
-  → LSTM model predicts from 30-day price sequences
-  → Ensemble combines both for final recommendation
-  → Bubble score shows crash risk (0-100)
-  → Feature importance shows what drove the prediction
+### Installation
 
-═══════════════════════════════════════════════════════
-  TROUBLESHOOTING
-═══════════════════════════════════════════════════════
+```bash
+git clone https://github.com/MegalodonCPU/stock-strategy-analyzer.git
+cd stock-strategy-analyzer
+pip install -r requirements.txt
+```
 
-Port 5000 blocked on Mac?
-  → App uses port 8080 by default
-  → Go to http://localhost:8080
+### Configuration
 
-"Could not connect to server"?
-  → Make sure app.py is running in Command Prompt
-  → Open the URL through Flask, not by double-clicking the HTML file
+Set your Groq API key as an environment variable:
 
-TensorFlow install fails?
-  → App works without it (GBM only mode)
-  → LSTM prediction will show N/A
+```bash
+# macOS / Linux
+export GROQ_API_KEY="your_key_here"
 
-Analysis takes too long?
-  → Normal — ML training takes 20-30 seconds
-  → Use a shorter date range to speed it up
+# Windows (Command Prompt)
+set GROQ_API_KEY=your_key_here
 
-═══════════════════════════════════════════════════════
-  NOT FINANCIAL ADVICE
-═══════════════════════════════════════════════════════
+# Windows (PowerShell)
+$env:GROQ_API_KEY="your_key_here"
+```
 
-This tool is for educational purposes only.
-Past performance does not guarantee future results.
-Short selling involves unlimited downside risk.
-Always consult a licensed financial advisor.
+### Running
 
-═══════════════════════════════════════════════════════
+```bash
+python app.py
+```
+
+Then open your browser to `http://localhost:5000`.
+
+## Usage
+
+1. Enter a stock ticker (e.g., AAPL, TSLA, NVDA)
+2. Set your starting capital, date range, and trailing stop percentage
+3. Click **Run Analysis**
+4. Review the performance chart and strategy cards
+5. Check the AI recommendation and click **Why?** for a detailed explanation
+6. Ask StockBot any follow-up questions
+
+## Strategy Overview
+
+| Strategy | Logic |
+|----------|-------|
+| Buy & Hold | Buy on day one, hold the entire period |
+| Momentum | Follow the trend using moving average crossovers |
+| Bollinger Bands | Buy at the lower band, sell at the upper band |
+| Hybrid Bollinger-Momentum | Combine mean reversion with trend confirmation |
+| Trailing Stop Loss | Ride gains, exit on a percentage pullback from the peak |
+| RSI | Buy oversold conditions, sell overbought |
+| Short/Bubble | Stay long by default, go to cash on overheating, short on extreme bubbles |
+
+## Disclaimer
+
+This tool is for educational and informational purposes only. It is not financial advice. Past performance does not guarantee future results. Always consult a licensed financial advisor before making investment decisions.
+
+## License
+
+MIT
